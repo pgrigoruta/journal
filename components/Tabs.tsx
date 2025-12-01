@@ -10,7 +10,7 @@ interface TabsProps {
   defaultTab?: Tab;
 }
 
-export default function Tabs({ defaultTab = 'manage' }: TabsProps) {
+export default function Tabs({ defaultTab = 'journal' }: TabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>(defaultTab);
 
   return (

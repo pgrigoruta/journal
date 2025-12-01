@@ -1,6 +1,6 @@
 import Tabs from '@/components/Tabs';
 
 export default function Home() {
-  return <Tabs defaultTab="manage" />;
+  return <Tabs defaultTab="journal" />;
 }
 
