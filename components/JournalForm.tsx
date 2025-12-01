@@ -3,7 +3,15 @@
 import { useState, useEffect } from 'react';
 import { Metric } from '@/lib/types/metric';
 import { matchesRecurrence } from '@/lib/utils/recurrence';
+import { toDateOnlyString } from '@/lib/utils/date';
 import Toggle from './Toggle';
+import Card from './ui/Card';
+import Button from './ui/Button';
+import IconButton from './ui/IconButton';
+import Modal from './ui/Modal';
+import TrashIcon from './ui/TrashIcon';
+import LoadingSpinner from './ui/LoadingSpinner';
+import MetricInput from './MetricInput';
 
 interface JournalFormProps {
   selectedDate: Date;
@@ -16,15 +24,19 @@ interface FormData {
 export default function JournalForm({ selectedDate }: JournalFormProps) {
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingEntry, setLoadingEntry] = useState(false);
   const [formData, setFormData] = useState<FormData>({});
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [hasEntry, setHasEntry] = useState(false);
 
   useEffect(() => {
     loadMetrics();
   }, []);
 
   useEffect(() => {
-    // Reset form data when date changes
-    setFormData({});
+    loadEntryData();
   }, [selectedDate]);
 
   const loadMetrics = async () => {
@@ -41,6 +53,56 @@ export default function JournalForm({ selectedDate }: JournalFormProps) {
     }
   };
 
+  const loadEntryData = async () => {
+    try {
+      setLoadingEntry(true);
+      const dateStr = toDateOnlyString(selectedDate);
+      const response = await fetch(`/api/journal/entries?date=${dateStr}`);
+      if (!response.ok) throw new Error('Failed to load entry');
+      const data = await response.json();
+
+      const hasData = data.values && Object.keys(data.values).length > 0;
+      setHasEntry(hasData);
+
+      if (data.values) {
+        setFormData(data.values);
+      } else {
+        setFormData({});
+      }
+    } catch (error) {
+      console.error('Error loading entry data:', error);
+      setFormData({});
+      setHasEntry(false);
+    } finally {
+      setLoadingEntry(false);
+    }
+  };
+
+  const saveEntry = async () => {
+    try {
+      setSaving(true);
+      const dateStr = toDateOnlyString(selectedDate);
+      const response = await fetch('/api/journal/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: dateStr,
+          values: formData,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save entry');
+      }
+
+      setHasEntry(true);
+    } catch (error) {
+      console.error('Error saving entry:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleChange = (metricId: string, value: string | number | boolean) => {
     setFormData((prev) => ({
       ...prev,
@@ -48,123 +110,97 @@ export default function JournalForm({ selectedDate }: JournalFormProps) {
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // TODO: Save journal entries
-    console.log('Form data:', formData);
-    console.log('Date:', selectedDate);
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      const dateStr = toDateOnlyString(selectedDate);
+      const response = await fetch(`/api/journal/entries?date=${dateStr}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete entry');
+      }
+
+      setFormData({});
+      setHasEntry(false);
+      setShowDeleteConfirm(false);
+    } catch (error) {
+      console.error('Error deleting entry:', error);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Filter and sort metrics
   const visibleMetrics = metrics
     .filter((metric) => {
-      // Only show active metrics
       if (!metric.active) return false;
-      // Check if date matches recurrence
       return matchesRecurrence(selectedDate, metric.recurrence as any);
     })
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  if (loading) {
+  if (loading || loadingEntry) {
     return (
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-        <p className="text-gray-400">Loading metrics...</p>
-      </div>
+      <Card className="flex-1">
+        <div className="flex items-center justify-center py-8">
+          <LoadingSpinner size="lg" />
+        </div>
+      </Card>
     );
   }
 
   if (visibleMetrics.length === 0) {
     return (
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-        <p className="text-gray-400">No metrics scheduled for this date.</p>
-      </div>
+      <Card className="flex-1">
+        <p className="text-text-tertiary">No metrics scheduled for this date.</p>
+      </Card>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-      <h3 className="text-lg font-semibold text-gray-100 mb-4">Journal Entry</h3>
-      
-      <div className="space-y-4">
-        {visibleMetrics.map((metric) => (
-          <div key={metric.id} className="space-y-2">
-            <label className="block text-sm font-medium text-gray-300">
-              {metric.label}
-            </label>
-            
-            {metric.type === 'text' && (
-              <textarea
-                value={formData[metric.id] as string || ''}
-                onChange={(e) => handleChange(metric.id, e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-                placeholder="Enter text..."
+    <>
+      <Card className="flex-1 relative" title="Journal Entry" headerActions={
+        <>
+          {hasEntry && (
+            <IconButton
+              icon={<TrashIcon />}
+              variant="danger"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={deleting || saving}
+              aria-label="Delete entry"
+            />
+          )}
+          <Button onClick={saveEntry} isLoading={saving} disabled={deleting}>
+            Save Entry
+          </Button>
+        </>
+      }>
+        <div className="space-y-4">
+          {visibleMetrics.map((metric) => (
+            <div key={metric.id} className="space-y-2">
+              <label className="block text-sm font-medium text-text-secondary">{metric.label}</label>
+              <MetricInput
+                metric={metric}
+                value={formData[metric.id]}
+                onChange={(value) => handleChange(metric.id, value)}
               />
-            )}
+            </div>
+          ))}
+        </div>
+      </Card>
 
-            {metric.type === 'number' && (
-              <input
-                type="number"
-                value={formData[metric.id] as number || ''}
-                onChange={(e) => handleChange(metric.id, parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter number..."
-              />
-            )}
-
-            {metric.type === 'yesno' && (
-              <Toggle
-                checked={formData[metric.id] === true || formData[metric.id] === 'yes'}
-                onChange={(checked) => handleChange(metric.id, checked)}
-              />
-            )}
-
-            {metric.type === 'grade' && (
-              <div className="flex gap-2">
-                {[1, 2, 3, 4, 5].map((grade) => (
-                  <button
-                    key={grade}
-                    type="button"
-                    onClick={() => handleChange(metric.id, grade)}
-                    className={`w-10 h-10 rounded-md font-semibold transition-colors ${
-                      formData[metric.id] === grade
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                  >
-                    {grade}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {metric.type === 'dropdown' && metric.options && (
-              <select
-                value={formData[metric.id] as string || ''}
-                onChange={(e) => handleChange(metric.id, e.target.value)}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select an option...</option>
-                {metric.options.map((option) => (
-                  <option key={option.key} value={option.key}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-6 pt-4 border-t border-gray-700">
-        <button
-          type="submit"
-          className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium"
-        >
-          Save Entry
-        </button>
-      </div>
-    </form>
+      <Modal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Delete Entry"
+        variant="danger"
+        onConfirm={handleDelete}
+        confirmLabel="Delete"
+        isLoading={deleting}
+      >
+        Are you sure you want to delete this journal entry? This action cannot be undone.
+      </Modal>
+    </>
   );
 }
-

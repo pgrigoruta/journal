@@ -12,6 +12,52 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        // Theme colors
+        primary: {
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#60a5fa',
+          500: '#3b82f6', // blue-500
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+        },
+        danger: {
+          50: '#fef2f2',
+          100: '#fee2e2',
+          200: '#fecaca',
+          300: '#fca5a5',
+          400: '#f87171',
+          500: '#ef4444', // red-500
+          600: '#dc2626',
+          700: '#b91c1c',
+          800: '#991b1b',
+          900: '#7f1d1d',
+        },
+        surface: {
+          DEFAULT: '#1f2937', // gray-800
+          light: '#374151', // gray-700
+          dark: '#111827', // gray-900
+          border: '#374151', // gray-700
+        },
+        text: {
+          primary: '#f3f4f6', // gray-100
+          secondary: '#d1d5db', // gray-300
+          tertiary: '#9ca3af', // gray-400
+          muted: '#6b7280', // gray-500
+        },
+        chart: {
+          blue: '#3b82f6',
+          green: '#10b981',
+          yellow: '#f59e0b',
+          red: '#ef4444',
+          purple: '#8b5cf6',
+          pink: '#ec4899',
+          cyan: '#06b6d4',
+        },
       },
     },
   },
