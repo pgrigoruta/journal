@@ -10,11 +10,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Example model - customize based on your needs
-// model User {
-//   id        String   @id @default(cuid())
-//   email     String   @unique
-//   name      String?
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
+enum MetricType {
+  text
+  number
+  yesno
+  grade
+  dropdown
+}
+
+model Metric {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label        String
+  type         MetricType
+  options      Json?    // For dropdown: [{ key: string, label: string }]
+  recurrence   Json     // Recurrence pattern configuration
+  sortOrder    Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([sortOrder])
+  @@index([active])
+}
