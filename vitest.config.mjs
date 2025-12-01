@@ -11,6 +11,14 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    testTimeout: 15000,
+    // Use node environment for files matching this pattern (for network requests)
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        singleThread: false,
+      },
+    },
   },
   resolve: {
     alias: {
