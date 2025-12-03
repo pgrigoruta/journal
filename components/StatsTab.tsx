@@ -1,15 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Metric } from '@/lib/types/metric';
+import { useState, useEffect, useMemo } from 'react';
+import { Category } from '@/lib/types/category';
 import { toDateOnlyString, normalizeToDateOnly } from '@/lib/utils/date';
-import { getDateRangeFromPreset, groupByGranularity, formatPeriodLabel, type DateRangePreset, type Granularity } from '@/lib/utils/stats';
+import { getDateRangeFromPreset, formatPeriodLabel, type DateRangePreset, type Granularity } from '@/lib/utils/stats';
 import Card from './ui/Card';
 import Button from './ui/Button';
 import LoadingSpinner from './ui/LoadingSpinner';
 import LineChartWrapper from './charts/LineChartWrapper';
-import PieChartWrapper from './charts/PieChartWrapper';
-import BarChartWrapper from './charts/BarChartWrapper';
 
 const DATE_RANGE_PRESETS: DateRangePreset[] = ['lastWeek', 'lastMonth', 'last3Months', 'last6Months', 'lastYear', 'allTime'];
 
@@ -17,35 +15,41 @@ const formatPresetLabel = (preset: DateRangePreset): string => {
   return preset.replace(/([A-Z])/g, ' $1').replace(/^./, (str) => str.toUpperCase());
 };
 
-interface ChartData {
-  number: Array<{ period: string; date: Date; value: number }>;
-  pie: Array<{ name: string; value: number }>;
-  bar: Array<{ grade: string; count: number }>;
+interface Entry {
+  date: Date | string;
+  score: number | null;
+  categoryScores: Record<string, number> | null;
+}
+
+interface ScoreDataPoint {
+  period: string;
+  date: Date;
+  value: number;
 }
 
 export default function StatsTab() {
-  const [metrics, setMetrics] = useState<Metric[]>([]);
-  const [entries, setEntries] = useState<any[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState(() => getDateRangeFromPreset('lastMonth'));
   const [granularity, setGranularity] = useState<Granularity>('day');
 
   useEffect(() => {
-    loadMetrics();
+    loadCategories();
   }, []);
 
   useEffect(() => {
     loadEntries();
   }, [dateRange]);
 
-  const loadMetrics = async () => {
+  const loadCategories = async () => {
     try {
-      const response = await fetch('/api/metrics');
-      if (!response.ok) throw new Error('Failed to load metrics');
+      const response = await fetch('/api/categories');
+      if (!response.ok) throw new Error('Failed to load categories');
       const data = await response.json();
-      setMetrics(data);
+      setCategories(data);
     } catch (error) {
-      console.error('Error loading metrics:', error);
+      console.error('Error loading categories:', error);
     } finally {
       setLoading(false);
     }
@@ -77,88 +81,120 @@ export default function StatsTab() {
     }
   };
 
-  // Filter active metrics and sort by sortOrder
-  const activeMetrics = metrics
-    .filter((m) => m.active && m.type !== 'text')
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+  // Parse entry dates
+  const parsedEntries = useMemo(() => {
+    return entries.map((entry) => {
+      const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
+      return {
+        date: entryDate,
+        score: entry.score,
+        categoryScores: entry.categoryScores || {},
+      };
+    });
+  }, [entries]);
 
-  // Parse entry dates and group by granularity
-  const parsedEntries = entries.map((entry) => {
-    const entryDate = entry.date instanceof Date ? entry.date : new Date(entry.date);
-    return {
-      date: entryDate,
-      values: entry.values,
-    };
-  });
-  const groupedData = groupByGranularity(parsedEntries, granularity);
+  // Group entries by granularity and calculate average scores
+  const groupScoresByGranularity = (entries: Array<{ date: Date; score: number | null; categoryScores: Record<string, number> }>): Map<string, { date: Date; totalScore: number | null; categoryScores: Record<string, number | null> }> => {
+    const grouped = new Map<string, { date: Date; scores: number[]; categoryScores: Record<string, number[]> }>();
 
-  // Prepare chart data for each metric
-  const getChartData = (metric: Metric): ChartData['number'] | ChartData['pie'] | ChartData['bar'] | [] => {
-    if (metric.type === 'number') {
-      return groupedData
-        .map((group) => {
-          const valueArrays = group.values[metric.id] || [];
-          if (valueArrays.length === 0) return null;
+    entries.forEach((entry) => {
+      const entryDate = entry.date;
+      let periodKey: string;
+      let periodDate: Date;
 
-          const allValues = valueArrays.flat().map((v: any) => {
-            const val = v?.value ?? v;
-            return Number(val) || 0;
-          });
-
-          const avgValue =
-            allValues.length > 0
-              ? allValues.reduce((sum: number, val: number) => sum + val, 0) / allValues.length
-              : null;
-
-          return avgValue !== null
-            ? {
-                period: formatPeriodLabel(group.period, granularity),
-                date: group.date,
-                value: Math.round(avgValue * 100) / 100,
-              }
-            : null;
-        })
-        .filter((d): d is ChartData['number'][0] => d !== null);
-    } else if (metric.type === 'yesno' || metric.type === 'dropdown') {
-      const counts: Record<string, number> = {};
-      parsedEntries.forEach((entry) => {
-        const value = entry.values[metric.id]?.value;
-        if (value !== undefined && value !== null && value !== '') {
-          const key = String(value);
-          counts[key] = (counts[key] || 0) + 1;
+      switch (granularity) {
+        case 'day':
+          periodKey = toDateOnlyString(entryDate);
+          periodDate = new Date(entryDate);
+          periodDate.setHours(0, 0, 0, 0);
+          break;
+        case 'week': {
+          const weekStart = new Date(entryDate);
+          const dayOfWeek = weekStart.getDay();
+          weekStart.setDate(weekStart.getDate() - dayOfWeek);
+          weekStart.setHours(0, 0, 0, 0);
+          periodKey = `week-${toDateOnlyString(weekStart)}`;
+          periodDate = weekStart;
+          break;
         }
-      });
-
-      if (metric.type === 'yesno') {
-        return [
-          { name: 'Yes', value: counts['true'] || counts['yes'] || 0 },
-          { name: 'No', value: counts['false'] || counts['no'] || 0 },
-        ].filter((item) => item.value > 0);
-      } else {
-        return (
-          metric.options?.map((option) => ({
-            name: option.label,
-            value: counts[option.key] || 0,
-          })) || []
-        ).filter((item) => item.value > 0);
+        case 'month': {
+          const monthStart = new Date(entryDate.getFullYear(), entryDate.getMonth(), 1);
+          monthStart.setHours(0, 0, 0, 0);
+          periodKey = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}`;
+          periodDate = monthStart;
+          break;
+        }
       }
-    } else if (metric.type === 'grade') {
-      const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-      parsedEntries.forEach((entry) => {
-        const value = entry.values[metric.id]?.value;
-        if (value !== undefined && value !== null) {
-          const grade = Number(value);
-          if (grade >= 1 && grade <= 5) {
-            counts[grade] = (counts[grade] || 0) + 1;
-          }
+
+      if (!grouped.has(periodKey)) {
+        grouped.set(periodKey, { date: periodDate, scores: [], categoryScores: {} });
+      }
+
+      const group = grouped.get(periodKey)!;
+      if (entry.score !== null && entry.score !== undefined) {
+        group.scores.push(entry.score);
+      }
+
+      Object.entries(entry.categoryScores).forEach(([categoryId, score]) => {
+        if (!group.categoryScores[categoryId]) {
+          group.categoryScores[categoryId] = [];
+        }
+        if (score !== null && score !== undefined) {
+          group.categoryScores[categoryId].push(score);
         }
       });
-      return [1, 2, 3, 4, 5].map((grade) => ({
-        grade: `Grade ${grade}`,
-        count: counts[grade] || 0,
-      }));
-    }
-    return [];
+    });
+
+    // Calculate averages
+    const result = new Map<string, { date: Date; totalScore: number | null; categoryScores: Record<string, number | null> }>();
+    grouped.forEach((group, periodKey) => {
+      const avgTotalScore = group.scores.length > 0
+        ? group.scores.reduce((sum, s) => sum + s, 0) / group.scores.length
+        : null;
+
+      const avgCategoryScores: Record<string, number | null> = {};
+      Object.entries(group.categoryScores).forEach(([categoryId, scores]) => {
+        avgCategoryScores[categoryId] = scores.length > 0
+          ? scores.reduce((sum, s) => sum + s, 0) / scores.length
+          : null;
+      });
+
+      result.set(periodKey, {
+        date: group.date,
+        totalScore: avgTotalScore,
+        categoryScores: avgCategoryScores,
+      });
+    });
+
+    return result;
+  };
+
+  const groupedScores = useMemo(() => {
+    return groupScoresByGranularity(parsedEntries);
+  }, [parsedEntries, granularity]);
+
+  // Prepare chart data for total score
+  const totalScoreData: ScoreDataPoint[] = useMemo(() => {
+    return Array.from(groupedScores.entries())
+      .filter(([_, data]) => data.totalScore !== null)
+      .map(([period, data]) => ({
+        period: formatPeriodLabel(period, granularity),
+        date: data.date,
+        value: Math.round((data.totalScore as number) * 10) / 10,
+      }))
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [groupedScores, granularity]);
+
+  // Prepare chart data for each category
+  const getCategoryChartData = (categoryId: string): ScoreDataPoint[] => {
+    return Array.from(groupedScores.entries())
+      .filter(([_, data]) => data.categoryScores[categoryId] !== null && data.categoryScores[categoryId] !== undefined)
+      .map(([period, data]) => ({
+        period: formatPeriodLabel(period, granularity),
+        date: data.date,
+        value: Math.round((data.categoryScores[categoryId] as number) * 10) / 10,
+      }))
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
   };
 
   if (loading) {
@@ -237,35 +273,36 @@ export default function StatsTab() {
 
         {/* Charts */}
         <div className="space-y-6">
-          {activeMetrics.map((metric) => {
-            const chartData = getChartData(metric);
+          {/* Total Score Chart - Large */}
+          {totalScoreData.length > 0 ? (
+            <Card title="Total Score">
+              <LineChartWrapper data={totalScoreData} label="Total Score" height={400} />
+            </Card>
+          ) : (
+            <Card title="Total Score">
+              <p className="text-sm text-text-tertiary">No data available for this period</p>
+            </Card>
+          )}
 
-            if (chartData.length === 0) {
+          {/* Category Score Charts - Smaller, 2 per row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {categories.map((category) => {
+              const categoryData = getCategoryChartData(category.id);
               return (
-                <Card key={metric.id} title={metric.label}>
-                  <p className="text-sm text-text-tertiary">No data available for this period</p>
+                <Card key={category.id} title={`${category.name} (${category.percent}%)`}>
+                  {categoryData.length > 0 ? (
+                    <LineChartWrapper data={categoryData} label={category.name} height={250} />
+                  ) : (
+                    <p className="text-sm text-text-tertiary">No data available for this period</p>
+                  )}
                 </Card>
               );
-            }
+            })}
+          </div>
 
-            return (
-              <Card key={metric.id} title={metric.label}>
-                {metric.type === 'number' && (
-                  <LineChartWrapper data={chartData as ChartData['number']} metricLabel={metric.label} />
-                )}
-
-                {(metric.type === 'yesno' || metric.type === 'dropdown') && (
-                  <PieChartWrapper data={chartData as ChartData['pie']} />
-                )}
-
-                {metric.type === 'grade' && <BarChartWrapper data={chartData as ChartData['bar']} />}
-              </Card>
-            );
-          })}
-
-          {activeMetrics.length === 0 && (
+          {categories.length === 0 && (
             <Card>
-              <p className="text-text-tertiary">No active metrics available for stats.</p>
+              <p className="text-text-tertiary">No categories available for stats.</p>
             </Card>
           )}
         </div>

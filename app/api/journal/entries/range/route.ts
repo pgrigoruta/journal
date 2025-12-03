@@ -44,15 +44,14 @@ export async function GET(request: NextRequest) {
     // Transform to a more usable format
     const result = entries.map((entry) => ({
       date: entry.date,
+      score: entry.score,
+      categoryScores: entry.categoryScores as Record<string, number> | null,
       values: entry.values.reduce((acc, val) => {
         acc[val.metricId] = {
           value: val.value,
           metric: {
             id: val.metric.id,
-            key: val.metric.key,
             label: val.metric.label,
-            type: val.metric.type,
-            options: val.metric.options,
           },
         };
         return acc;

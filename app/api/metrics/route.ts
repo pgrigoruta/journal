@@ -6,6 +6,9 @@ import { CreateMetricInput, UpdateMetricInput } from '@/lib/types/metric';
 export async function GET() {
   try {
     const metrics = await prisma.metric.findMany({
+      include: {
+        category: true,
+      },
       orderBy: { sortOrder: 'asc' },
     });
 
@@ -24,10 +27,10 @@ export async function POST(request: NextRequest) {
   try {
     const body: CreateMetricInput = await request.json();
     
-    // Validate key format (lowercase letters, numbers, underscores only)
-    if (!/^[a-z0-9_]+$/.test(body.key)) {
+    // Validate categoryId is provided
+    if (!body.categoryId) {
       return NextResponse.json(
-        { error: 'Key must contain only lowercase letters, numbers, and underscores' },
+        { error: 'Category is required' },
         { status: 400 }
       );
     }
@@ -39,26 +42,19 @@ export async function POST(request: NextRequest) {
 
     const newMetric = await prisma.metric.create({
       data: {
-        key: body.key,
         label: body.label,
-        type: body.type,
-        options: body.options ? JSON.parse(JSON.stringify(body.options)) : null,
-        recurrence: JSON.parse(JSON.stringify(body.recurrence)),
+        categoryId: body.categoryId,
         sortOrder: (maxSortOrder._max.sortOrder ?? -1) + 1,
         active: body.active ?? true,
+      },
+      include: {
+        category: true,
       },
     });
 
     return NextResponse.json(newMetric, { status: 201 });
   } catch (error: any) {
     console.error('Error creating metric:', error);
-    
-    if (error.code === 'P2002') {
-      return NextResponse.json(
-        { error: 'A metric with this key already exists' },
-        { status: 409 }
-      );
-    }
 
     return NextResponse.json(
       { error: 'Failed to create metric' },

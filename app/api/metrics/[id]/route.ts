@@ -11,6 +11,9 @@ export async function GET(
     const { id } = await params;
     const metric = await prisma.metric.findUnique({
       where: { id },
+      include: {
+        category: true,
+      },
     });
 
     if (!metric) {
@@ -41,18 +44,23 @@ export async function PUT(
 
     const updateData: any = {};
     if (body.label !== undefined) updateData.label = body.label;
-    if (body.type !== undefined) updateData.type = body.type;
-    if (body.options !== undefined) {
-      updateData.options = body.options ? JSON.parse(JSON.stringify(body.options)) : null;
-    }
-    if (body.recurrence !== undefined) {
-      updateData.recurrence = JSON.parse(JSON.stringify(body.recurrence));
+    if (body.categoryId !== undefined) {
+      if (!body.categoryId) {
+        return NextResponse.json(
+          { error: 'Category is required' },
+          { status: 400 }
+        );
+      }
+      updateData.categoryId = body.categoryId;
     }
     if (body.active !== undefined) updateData.active = body.active;
 
     const updatedMetric = await prisma.metric.update({
       where: { id },
       data: updateData,
+      include: {
+        category: true,
+      },
     });
 
     return NextResponse.json(updatedMetric);

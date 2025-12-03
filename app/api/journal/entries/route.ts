@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma/client';
 import { fromDateOnlyString, normalizeToDateOnly } from '@/lib/utils/date';
+import { calculateScores } from '@/lib/utils/score';
 
 // GET - Get entry for a specific date
 export async function GET(request: NextRequest) {
@@ -43,6 +44,8 @@ export async function GET(request: NextRequest) {
       entry: {
         id: entry.id,
         date: entry.date,
+        score: entry.score,
+        categoryScores: entry.categoryScores,
       },
       values,
     });
@@ -71,6 +74,19 @@ export async function POST(request: NextRequest) {
     // Parse date-only string to Date in local timezone
     const entryDate = fromDateOnlyString(date);
 
+    // Load all metrics for score calculation
+    const allMetrics = await prisma.metric.findMany({
+      include: {
+        category: true,
+      },
+      where: {
+        active: true,
+      },
+    });
+
+    // Calculate score
+    const scoreCalculation = calculateScores(allMetrics, values || {});
+
     // Use transaction to ensure atomicity
     const result = await prisma.$transaction(async (tx: any) => {
       // Find or create entry
@@ -78,9 +94,28 @@ export async function POST(request: NextRequest) {
         where: { date: entryDate },
       });
 
+      // Prepare category scores as JSON object
+      const categoryScoresJson = scoreCalculation.categoryScores.reduce((acc, catScore) => {
+        acc[catScore.categoryId] = catScore.score;
+        return acc;
+      }, {} as Record<string, number>);
+
       if (!entry) {
         entry = await tx.journalEntry.create({
-          data: { date: entryDate },
+          data: {
+            date: entryDate,
+            score: scoreCalculation.totalScore,
+            categoryScores: categoryScoresJson,
+          },
+        });
+      } else {
+        // Update score and category scores
+        entry = await tx.journalEntry.update({
+          where: { id: entry.id },
+          data: {
+            score: scoreCalculation.totalScore,
+            categoryScores: categoryScoresJson,
+          },
         });
       }
 

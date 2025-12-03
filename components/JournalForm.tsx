@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Metric } from '@/lib/types/metric';
-import { matchesRecurrence } from '@/lib/utils/recurrence';
 import { toDateOnlyString } from '@/lib/utils/date';
+import { calculateScores } from '@/lib/utils/score';
 import Toggle from './Toggle';
 import Card from './ui/Card';
 import Button from './ui/Button';
@@ -132,13 +132,33 @@ export default function JournalForm({ selectedDate }: JournalFormProps) {
     }
   };
 
-  // Filter and sort metrics
+  // Filter and sort metrics, then group by category
   const visibleMetrics = metrics
-    .filter((metric) => {
-      if (!metric.active) return false;
-      return matchesRecurrence(selectedDate, metric.recurrence as any);
-    })
+    .filter((metric) => metric.active)
     .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Group metrics by category
+  const metricsByCategory = visibleMetrics.reduce((acc, metric) => {
+    const categoryId = metric.category.id;
+    if (!acc[categoryId]) {
+      acc[categoryId] = {
+        category: metric.category,
+        metrics: [],
+      };
+    }
+    acc[categoryId].metrics.push(metric);
+    return acc;
+  }, {} as Record<string, { category: { id: string; name: string; percent: number }; metrics: Metric[] }>);
+
+  // Convert to array and sort by category name
+  const categoryGroups = Object.values(metricsByCategory).sort((a, b) => 
+    a.category.name.localeCompare(b.category.name)
+  );
+
+  // Calculate scores dynamically based on current form data
+  const scoreCalculation = useMemo(() => {
+    return calculateScores(visibleMetrics, formData);
+  }, [visibleMetrics, formData]);
 
   if (loading || loadingEntry) {
     return (
@@ -151,6 +171,14 @@ export default function JournalForm({ selectedDate }: JournalFormProps) {
   }
 
   if (visibleMetrics.length === 0) {
+    return (
+      <Card className="flex-1">
+        <p className="text-text-tertiary">No metrics scheduled for this date.</p>
+      </Card>
+    );
+  }
+
+  if (categoryGroups.length === 0) {
     return (
       <Card className="flex-1">
         <p className="text-text-tertiary">No metrics scheduled for this date.</p>
@@ -176,8 +204,36 @@ export default function JournalForm({ selectedDate }: JournalFormProps) {
           </Button>
         </>
       }>
-        <div className="space-y-4">
-          {visibleMetrics.map((metric) => (
+        {/* Total Score Display */}
+        <div className="mb-6 p-4 bg-surface-light border border-surface-border rounded-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-text-secondary">Total Score:</span>
+            <span className="text-2xl font-bold text-primary-500">
+              {scoreCalculation.totalScore.toFixed(1)}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {categoryGroups.map((group) => {
+            const categoryScore = scoreCalculation.categoryScores.find(
+              (cs) => cs.categoryId === group.category.id
+            );
+            return (
+              <div key={group.category.id} className="space-y-4">
+                <div className="flex items-center justify-between border-b border-surface-border pb-2">
+                  <h3 className="text-lg font-semibold text-text-primary">
+                    {group.category.name} ({group.category.percent}%)
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-tertiary">Score:</span>
+                    <span className="text-lg font-semibold text-primary-400">
+                      {categoryScore?.score.toFixed(1) ?? '0.0'}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-4 pl-4">
+                  {group.metrics.map((metric) => (
             <div key={metric.id} className="space-y-2">
               <label className="block text-sm font-medium text-text-secondary">{metric.label}</label>
               <MetricInput
@@ -187,6 +243,10 @@ export default function JournalForm({ selectedDate }: JournalFormProps) {
               />
             </div>
           ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Card>
 

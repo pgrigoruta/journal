@@ -43,33 +43,6 @@ function SortableMetricItem({ metric, onEdit, onDelete }: { metric: Metric; onEd
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const getTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      text: 'Text',
-      number: 'Number',
-      yesno: 'Yes/No',
-      grade: 'Grade (1-5)',
-      dropdown: 'Dropdown',
-    };
-    return labels[type] || type;
-  };
-
-  const getRecurrenceLabel = (recurrence: any) => {
-    if (recurrence.type === 'daily') return 'Daily';
-    if (recurrence.type === 'weekly') {
-      const days = recurrence.days || [];
-      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      return `Weekly: ${days.map((d: number) => dayNames[d]).join(', ') || 'None'}`;
-    }
-    if (recurrence.type === 'monthly') return `Monthly: Day ${recurrence.day}`;
-    if (recurrence.type === 'yearly') {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      return `Yearly: ${months[recurrence.month - 1]} ${recurrence.day}`;
-    }
-    if (recurrence.type === 'specific') return `Specific: ${recurrence.dates?.length || 0} dates`;
-    if (recurrence.type === 'custom') return `Every ${recurrence.interval} ${recurrence.unit}`;
-    return 'Unknown';
-  };
 
   return (
     <div
@@ -98,20 +71,8 @@ function SortableMetricItem({ metric, onEdit, onDelete }: { metric: Metric; onEd
           </div>
           <div className="ml-8 space-y-1 text-sm text-gray-400">
             <div>
-              <span className="font-medium">Key:</span> <code className="text-blue-400">{metric.key}</code>
+              <span className="font-medium">Category:</span> {metric.category.name} ({metric.category.percent}%)
             </div>
-            <div>
-              <span className="font-medium">Type:</span> {getTypeLabel(metric.type)}
-            </div>
-            <div>
-              <span className="font-medium">Recurrence:</span> {getRecurrenceLabel(metric.recurrence)}
-            </div>
-            {metric.type === 'dropdown' && metric.options && (
-              <div>
-                <span className="font-medium">Options:</span>{' '}
-                {metric.options.length} option{metric.options.length !== 1 ? 's' : ''}
-              </div>
-            )}
           </div>
         </div>
         <div className="flex gap-2 ml-4">

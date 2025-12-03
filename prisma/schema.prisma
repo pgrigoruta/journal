@@ -10,21 +10,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum MetricType {
-  text
-  number
-  yesno
-  grade
-  dropdown
-}
-
 model Metric {
   id          String   @id @default(cuid())
-  key         String   @unique
   label        String
-  type         MetricType
-  options      Json?    // For dropdown: [{ key: string, label: string }]
-  recurrence   Json     // Recurrence pattern configuration
+  categoryId   String
+  category     Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   sortOrder    Int      @default(0)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -34,14 +24,17 @@ model Metric {
 
   @@index([sortOrder])
   @@index([active])
+  @@index([categoryId])
 }
 
 model JournalEntry {
-  id        String   @id @default(cuid())
-  date      DateTime @unique // Date only (time will be set to 00:00:00)
-  values    JournalEntryValue[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(cuid())
+  date            DateTime @unique // Date only (time will be set to 00:00:00)
+  score           Float?   // Calculated total score 0-100
+  categoryScores  Json?    // Per-category scores: { categoryId: score }
+  values          JournalEntryValue[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([date])
 }
@@ -59,4 +52,16 @@ model JournalEntryValue {
   @@unique([entryId, metricId])
   @@index([entryId])
   @@index([metricId])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  percent   Int      // 0-100
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  metrics   Metric[]
+
+  @@index([name])
 }

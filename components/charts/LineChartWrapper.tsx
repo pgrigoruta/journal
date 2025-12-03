@@ -1,18 +1,26 @@
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { ChartConfig } from './types';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface LineChartWrapperProps {
   data: Array<{ period: string; date: Date; value: number }>;
-  metricLabel: string;
+  label: string;
+  height?: number;
 }
 
-export default function LineChartWrapper({ data, metricLabel }: LineChartWrapperProps) {
+export default function LineChartWrapper({ data, label, height = 300 }: LineChartWrapperProps) {
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-        <XAxis dataKey="period" stroke="#9ca3af" />
-        <YAxis stroke="#9ca3af" />
+        <XAxis 
+          dataKey="period" 
+          stroke="#9ca3af"
+          style={{ fontSize: '12px' }}
+        />
+        <YAxis 
+          stroke="#9ca3af"
+          domain={[0, 100]}
+          style={{ fontSize: '12px' }}
+        />
         <Tooltip
           contentStyle={{
             backgroundColor: '#1f2937',
@@ -20,15 +28,15 @@ export default function LineChartWrapper({ data, metricLabel }: LineChartWrapper
             borderRadius: '6px',
           }}
           labelStyle={{ color: '#f3f4f6' }}
+          formatter={(value: number) => [`${value.toFixed(1)}`, label]}
         />
-        <Legend />
         <Line
           type="monotone"
           dataKey="value"
-          stroke={ChartConfig.colors.blue}
+          stroke="#3b82f6"
           strokeWidth={2}
-          dot={{ fill: ChartConfig.colors.blue }}
-          name={metricLabel}
+          dot={{ fill: '#3b82f6', r: 4 }}
+          activeDot={{ r: 6 }}
         />
       </LineChart>
     </ResponsiveContainer>
